@@ -1,0 +1,498 @@
+diff -rupN iperf-2.0.5/include/Settings.hpp iperf-2.0.5-patched/include/Settings.hpp
+--- iperf-2.0.5/include/Settings.hpp	2008-03-19 23:23:26.000000000 +0100
++++ iperf-2.0.5-patched/include/Settings.hpp	2014-12-05 12:11:28.000000000 +0100
+@@ -171,6 +171,8 @@ typedef struct thread_Settings {
+     Socklen_t size_local;
+     nthread_t mTID;
+     char* mCongestion;
++    char* mTcpInfoOutput;
++    int   mTcpInfoTimeMillis;
+ #if defined( HAVE_WIN32_THREAD )
+     HANDLE mHandle;
+ #endif
+@@ -211,6 +213,8 @@ typedef struct thread_Settings {
+ #define FLAG_SINGLEUDP      0x00200000
+ #define FLAG_CONGESTION     0x00400000
+ 
++#define FLAG_TCPINFOTHREAD  0x10000000
++
+ #define isBuflenSet(settings)      ((settings->flags & FLAG_BUFLENSET) != 0)
+ #define isCompat(settings)         ((settings->flags & FLAG_COMPAT) != 0)
+ #define isDaemon(settings)         ((settings->flags & FLAG_DAEMON) != 0)
+@@ -236,6 +240,8 @@ typedef struct thread_Settings {
+ #define isSingleClient(settings)   ((settings->flags & FLAG_SINGLECLIENT) != 0)
+ #define isSingleUDP(settings)      ((settings->flags & FLAG_SINGLEUDP) != 0)
+ #define isCongestionControl(settings) ((settings->flags & FLAG_CONGESTION) != 0)
++#define isTcpInfothread(settings)  ((settings->flags & FLAG_TCPINFOTHREAD) != 0)
++
+ 
+ #define setBuflenSet(settings)     settings->flags |= FLAG_BUFLENSET
+ #define setCompat(settings)        settings->flags |= FLAG_COMPAT
+@@ -260,6 +266,8 @@ typedef struct thread_Settings {
+ #define setSingleClient(settings)  settings->flags |= FLAG_SINGLECLIENT
+ #define setSingleUDP(settings)     settings->flags |= FLAG_SINGLEUDP
+ #define setCongestionControl(settings) settings->flags |= FLAG_CONGESTION
++#define setTcpInfothread(settings) settings->flags |= FLAG_TCPINFOTHREAD
++
+ 
+ #define unsetBuflenSet(settings)   settings->flags &= ~FLAG_BUFLENSET
+ #define unsetCompat(settings)      settings->flags &= ~FLAG_COMPAT
+@@ -284,6 +292,7 @@ typedef struct thread_Settings {
+ #define unsetSingleClient(settings)   settings->flags &= ~FLAG_SINGLECLIENT
+ #define unsetSingleUDP(settings)      settings->flags &= ~FLAG_SINGLEUDP
+ #define unsetCongestionControl(settings) settings->flags &= ~FLAG_CONGESTION
++#define unsetTcpInfothread(settings) settings->flags &= ~FLAG_TCPINFOTHREAD
+ 
+ 
+ #define HEADER_VERSION1 0x80000000
+diff -rupN iperf-2.0.5/include/TcpInfothread.hpp iperf-2.0.5-patched/include/TcpInfothread.hpp
+--- iperf-2.0.5/include/TcpInfothread.hpp	1970-01-01 01:00:00.000000000 +0100
++++ iperf-2.0.5-patched/include/TcpInfothread.hpp	2014-12-10 18:21:33.206715231 +0100
+@@ -0,0 +1,32 @@
++#ifndef TCPINFOTHREAD_HPP_
++#define TCPINFOTHREAD_HPP_
++
++#include <pthread.h>
++
++#include "Settings.hpp"
++
++
++class TcpInfothread
++{
++public:
++	TcpInfothread(thread_Settings* pSettings);
++
++	void start();
++	void end();
++	virtual ~TcpInfothread() {}
++
++protected:
++	void* run();
++	static void* run_helper(void* ptr);
++
++private:
++	void printHeader(FILE* fp);
++	void printLine(FILE* fp, struct tcp_info* tcpInfo);
++
++	thread_Settings* m_pSettings;
++
++	pthread_t m_thread;
++	bool m_endThread;
++};
++
++#endif /* TCPINFOTHREAD_HPP_ */
+diff -rupN iperf-2.0.5/README-PATCH.txt iperf-2.0.5-patched/README-PATCH.txt
+--- iperf-2.0.5/README-PATCH.txt	1970-01-01 01:00:00.000000000 +0100
++++ iperf-2.0.5-patched/README-PATCH.txt	2014-12-10 18:35:21.254821300 +0100
+@@ -0,0 +1,50 @@
++This is a patched version of Iperf v2.0.5.
++
++The patch enables to view the tcp-info data out of an iperf connection.
++The data is given in csv format. The first line shows all field-names.
++
++It only changes client code, so this version can run against an unpatched server.
++
++
++================================================================================
++
++The patch is provided by:
++
++Karlsruhe Institute of Technology
++Institute of Telematics
++Zirkel 2, 76131 Karlsruhe
++Germany
++
++and is licensed under the "BSD 2-Clause License":
++
++--------------------------------------------------------------------------------
++
++Copyright (c) 2012-2014,
++Karlsruhe Institute of Technology, Institute of Telematics
++
++Redistribution and use in source and binary forms, with or without modification,
++are permitted provided that the following conditions are met:
++
++1. Redistributions of source code must retain the above copyright notice, this
++list of conditions and the following disclaimer.
++
++2. Redistributions in binary form must reproduce the above copyright notice,
++this list of conditions and the following disclaimer in the documentation and/or
++other materials provided with the distribution.
++
++THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
++ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
++WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
++DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
++ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
++(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
++LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
++ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
++SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++================================================================================
++
++
++For the original licence of Iperf, please refer to doc/ui_license.html.
++
+diff -rupN iperf-2.0.5/src/Launch.cpp iperf-2.0.5-patched/src/Launch.cpp
+--- iperf-2.0.5/src/Launch.cpp	2007-08-29 23:57:27.000000000 +0200
++++ iperf-2.0.5-patched/src/Launch.cpp	2014-12-05 12:11:28.000000000 +0100
+@@ -60,6 +60,7 @@
+ #include "Listener.hpp"
+ #include "Server.hpp"
+ #include "PerfSocket.hpp"
++#include "TcpInfothread.hpp"
+ 
+ /*
+  * listener_spawn is responsible for creating a Listener class
+@@ -106,6 +107,7 @@ void server_spawn( thread_Settings *thre
+  */
+ void client_spawn( thread_Settings *thread ) {
+     Client *theClient = NULL;
++    TcpInfothread *infoThread = NULL;
+ 
+     //start up the client
+     theClient = new Client( thread );
+@@ -113,9 +115,24 @@ void client_spawn( thread_Settings *thre
+     // Let the server know about our settings
+     theClient->InitiateServer();
+ 
++    if(isTcpInfothread(thread))
++    {
++        infoThread = new TcpInfothread(thread);
++
++        // run the info-thread
++        infoThread->start();
++    }
++
++
+     // Run the test
+     theClient->Run();
++
++    if(infoThread != NULL)
++    {
++    	infoThread->end();
++    }
+     DELETE_PTR( theClient );
++    DELETE_PTR( infoThread );
+ }
+ 
+ /*
+diff -rupN iperf-2.0.5/src/Locale.c iperf-2.0.5-patched/src/Locale.c
+--- iperf-2.0.5/src/Locale.c	2010-03-31 00:57:17.000000000 +0200
++++ iperf-2.0.5-patched/src/Locale.c	2014-12-05 12:11:28.000000000 +0100
+@@ -115,6 +115,9 @@ Client specific:\n\
+   -P, --parallel  #        number of parallel client threads to run\n\
+   -T, --ttl       #        time-to-live, for multicast (default 1)\n\
+   -Z, --linux-congestion <algo>  set TCP congestion control algorithm (Linux only)\n\
++  -Q, --tcp-info           write tcp-info data to stdout\n\
++      --tcp-info=filename  write tcp-info data to file/pipe\n\
++  -Y, --tcp-info-time #    time in milliseconds of update (default 500)\n\
+ \n\
+ Miscellaneous:\n\
+   -x, --reportexclude [CDMSV]   exclude C(connection) D(data) M(multicast) S(settings) V(server) reports\n\
+diff -rupN iperf-2.0.5/src/Makefile.am iperf-2.0.5-patched/src/Makefile.am
+--- iperf-2.0.5/src/Makefile.am	2008-03-12 21:28:21.000000000 +0100
++++ iperf-2.0.5-patched/src/Makefile.am	2014-12-05 12:11:28.000000000 +0100
+@@ -34,6 +34,7 @@ iperf_SOURCES = \
+ 		service.c \
+ 		sockets.c \
+ 		stdio.c \
+-		tcp_window_size.c
++		tcp_window_size.c \
++		TcpInfothread.cpp
+ 
+ iperf_LDADD = $(LIBCOMPAT_LDADDS)
+diff -rupN iperf-2.0.5/src/Makefile.in iperf-2.0.5-patched/src/Makefile.in
+--- iperf-2.0.5/src/Makefile.in	2010-04-10 21:23:05.000000000 +0200
++++ iperf-2.0.5-patched/src/Makefile.in	2014-12-05 12:11:28.000000000 +0100
+@@ -57,7 +57,8 @@ am_iperf_OBJECTS = Client.$(OBJEXT) Extr
+ 	ReportDefault.$(OBJEXT) Reporter.$(OBJEXT) Server.$(OBJEXT) \
+ 	Settings.$(OBJEXT) SocketAddr.$(OBJEXT) gnu_getopt.$(OBJEXT) \
+ 	gnu_getopt_long.$(OBJEXT) main.$(OBJEXT) service.$(OBJEXT) \
+-	sockets.$(OBJEXT) stdio.$(OBJEXT) tcp_window_size.$(OBJEXT)
++	sockets.$(OBJEXT) stdio.$(OBJEXT) tcp_window_size.$(OBJEXT) \
++	TcpInfothread.$(OBJEXT)
+ iperf_OBJECTS = $(am_iperf_OBJECTS)
+ am__DEPENDENCIES_1 = $(top_builddir)/compat/libcompat.a
+ iperf_DEPENDENCIES = $(am__DEPENDENCIES_1)
+@@ -214,7 +215,8 @@ iperf_SOURCES = \
+ 		service.c \
+ 		sockets.c \
+ 		stdio.c \
+-		tcp_window_size.c
++		tcp_window_size.c \
++		TcpInfothread.cpp
+ 
+ iperf_LDADD = $(LIBCOMPAT_LDADDS)
+ all: all-am
+diff -rupN iperf-2.0.5/src/Settings.cpp iperf-2.0.5-patched/src/Settings.cpp
+--- iperf-2.0.5/src/Settings.cpp	2010-07-09 03:05:46.000000000 +0200
++++ iperf-2.0.5-patched/src/Settings.cpp	2014-12-05 12:11:28.000000000 +0100
+@@ -121,6 +121,8 @@ const struct option long_options[] =
+ {"ipv6_domain",      no_argument, NULL, 'V'},
+ {"suggest_win_size", no_argument, NULL, 'W'},
+ {"linux-congestion", required_argument, NULL, 'Z'},
++{"tcp-info", optional_argument, NULL, 'Q'},
++{"tcp-info-time", required_argument, NULL, 'Y'},
+ {0, 0, 0, 0}
+ };
+ 
+@@ -169,7 +171,7 @@ const struct option env_options[] =
+ 
+ #define SHORT_OPTIONS()
+ 
+-const char short_options[] = "1b:c:df:hi:l:mn:o:p:rst:uvw:x:y:B:CDF:IL:M:NP:RS:T:UVWZ:";
++const char short_options[] = "1b:c:df:hi:l:mn:o:p:rst:uvw:x:y:B:CDF:IL:M:NP:RS:T:UVWZ:Q::Y:";
+ 
+ /* -------------------------------------------------------------------
+  * defaults
+@@ -231,6 +233,7 @@ void Settings_Initialize( thread_Setting
+     main->mTTL          = 1;             // -T,  link-local TTL
+     //main->mDomain     = kMode_IPv4;    // -V,
+     //main->mSuggestWin = false;         // -W,  Suggest the window size.
++    main->mTcpInfoTimeMillis = 500;		 // -Y,  tcp-info-time
+ 
+ } // end Settings
+ 
+@@ -268,6 +271,7 @@ void Settings_Destroy( thread_Settings *
+     DELETE_ARRAY( mSettings->mLocalhost );
+     DELETE_ARRAY( mSettings->mFileName  );
+     DELETE_ARRAY( mSettings->mOutputFileName );
++    DELETE_ARRAY( mSettings->mTcpInfoOutput );
+     DELETE_PTR( mSettings );
+ } // end ~Settings
+ 
+@@ -672,6 +676,19 @@ void Settings_Interpret( char option, co
+ #endif
+ 	    break;
+ 
++        case 'Q': // use tcp-info thread
++            setTcpInfothread(mExtSettings);
++            if(optarg != NULL)
++            {
++                mExtSettings->mTcpInfoOutput = new char[strlen(optarg)+1];
++                strcpy( mExtSettings->mTcpInfoOutput, optarg);
++            }
++
++            break;
++        case 'Y': // tcp-info-time is set
++        	mExtSettings->mTcpInfoTimeMillis = (int) atof( optarg );
++        	break;
++
+         default: // ignore unknown
+             break;
+     }
+diff -rupN iperf-2.0.5/src/TcpInfothread.cpp iperf-2.0.5-patched/src/TcpInfothread.cpp
+--- iperf-2.0.5/src/TcpInfothread.cpp	1970-01-01 01:00:00.000000000 +0100
++++ iperf-2.0.5-patched/src/TcpInfothread.cpp	2014-12-10 18:23:11.975204997 +0100
+@@ -0,0 +1,208 @@
++#include "TcpInfothread.hpp"
++#include "headers.h"
++
++TcpInfothread::TcpInfothread(thread_Settings* pSettings)
++{
++	m_pSettings = pSettings;
++	m_endThread = false;
++}
++
++void TcpInfothread::start()
++{
++	pthread_create( &m_thread, NULL, &TcpInfothread::run_helper, this);
++}
++
++void TcpInfothread::end()
++{
++	m_endThread = true;
++	pthread_join(m_thread, NULL);
++}
++
++/*
++ * Helper-method, that enables us to use the POSIX thread-system
++ * with this c++ class.
++ */
++void* TcpInfothread::run_helper(void* context)
++{
++	return ((TcpInfothread*) context)->run();
++}
++
++/*
++ * the entry point of the info-thread
++ */
++void* TcpInfothread::run()
++{
++	// default output is stdout
++	FILE* fOut = stdout;
++
++	// open file/pipe if argument is given
++	FILE* fOutfile = NULL;
++
++	if(m_pSettings->mTcpInfoOutput != NULL)
++	{
++		fOutfile = fopen(m_pSettings->mTcpInfoOutput, "w");
++
++		if(fOutfile != NULL)
++		{
++			fOut = fOutfile;
++		}
++	}
++
++	printHeader(fOut);
++
++	int socket = m_pSettings->mSock;
++	int sleepMicroSeconds = m_pSettings->mTcpInfoTimeMillis * 1000;
++
++	struct tcp_info tcpInfo;
++	socklen_t tcp_info_length = sizeof(struct tcp_info);
++
++	while(!m_endThread)
++	{
++		if(socket == -1)
++		{
++			// socket not yet opened
++			// try to acquire on the next loop
++			usleep(30000);
++			socket = m_pSettings->mSock;
++			continue;
++		}
++
++	    if (getsockopt(socket, IPPROTO_TCP, TCP_INFO, (void *)&tcpInfo, &tcp_info_length) < 0)
++	    {
++	        perror("Failed to getsockopt() in TcpInfothread!");
++	        break;
++	    }
++
++	    printLine(fOut, &tcpInfo);
++
++		usleep(sleepMicroSeconds);
++	}
++
++	if(fOutfile != NULL)
++	{
++		fclose(fOutfile);
++	}
++	return 0;
++}
++
++void TcpInfothread::printHeader(FILE* fp)
++{
++	 fprintf(fp,
++"tcpi_state,\
++tcpi_ca_state,\
++tcpi_retransmits,\
++tcpi_probes,\
++tcpi_backoff,\
++tcpi_options,\
++tcpi_snd_wscale,\
++tcpi_rcv_wscale,\
++tcpi_rto,\
++tcpi_ato,\
++tcpi_snd_mss,\
++tcpi_rcv_mss,\
++tcpi_unacked,\
++tcpi_sacked,\
++tcpi_lost,\
++tcpi_retrans,\
++tcpi_fackets,\
++tcpi_last_data_sent,\
++tcpi_last_ack_sent,\
++tcpi_last_data_recv,\
++tcpi_last_ack_recv,\
++tcpi_pmtu,\
++tcpi_rcv_ssthresh,\
++tcpi_rtt,\
++tcpi_rttvar,\
++tcpi_snd_ssthresh,\
++tcpi_snd_cwnd,\
++tcpi_advmss,\
++tcpi_reordering,\
++tcpi_rcv_rtt,\
++tcpi_rcv_space,\
++tcpi_total_retrans\n");
++}
++
++void TcpInfothread::printLine(FILE* fp, struct tcp_info* tcpInfo)
++{
++	fprintf(fp,
++			 "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
++		tcpInfo->tcpi_state,
++		tcpInfo->tcpi_ca_state,
++		tcpInfo->tcpi_retransmits,
++		tcpInfo->tcpi_probes,
++		tcpInfo->tcpi_backoff,
++		tcpInfo->tcpi_options,
++		tcpInfo->tcpi_snd_wscale,
++		tcpInfo->tcpi_rcv_wscale,
++		tcpInfo->tcpi_rto,
++		tcpInfo->tcpi_ato,
++		tcpInfo->tcpi_snd_mss,
++		tcpInfo->tcpi_rcv_mss,
++		tcpInfo->tcpi_unacked,
++		tcpInfo->tcpi_sacked,
++		tcpInfo->tcpi_lost,
++		tcpInfo->tcpi_retrans,
++		tcpInfo->tcpi_fackets,
++		tcpInfo->tcpi_last_data_sent,
++		tcpInfo->tcpi_last_ack_sent,
++		tcpInfo->tcpi_last_data_recv,
++		tcpInfo->tcpi_last_ack_recv,
++		tcpInfo->tcpi_pmtu,
++		tcpInfo->tcpi_rcv_ssthresh,
++		tcpInfo->tcpi_rtt,
++		tcpInfo->tcpi_rttvar,
++		tcpInfo->tcpi_snd_ssthresh,
++		tcpInfo->tcpi_snd_cwnd,
++		tcpInfo->tcpi_advmss,
++		tcpInfo->tcpi_reordering,
++		tcpInfo->tcpi_rcv_rtt,
++		tcpInfo->tcpi_rcv_space,
++		tcpInfo->tcpi_total_retrans);
++
++	fflush(fp);
++}
++
++/**
++ * The tcp-info struct
++
++  u_int8_t	tcpi_state;
++  u_int8_t	tcpi_ca_state;
++  u_int8_t	tcpi_retransmits;
++  u_int8_t	tcpi_probes;
++  u_int8_t	tcpi_backoff;
++  u_int8_t	tcpi_options;
++  u_int8_t	tcpi_snd_wscale : 4, tcpi_rcv_wscale : 4;
++
++  u_int32_t	tcpi_rto;
++  u_int32_t	tcpi_ato;
++  u_int32_t	tcpi_snd_mss;
++  u_int32_t	tcpi_rcv_mss;
++
++  u_int32_t	tcpi_unacked;
++  u_int32_t	tcpi_sacked;
++  u_int32_t	tcpi_lost;
++  u_int32_t	tcpi_retrans;
++  u_int32_t	tcpi_fackets;
++
++  Times.
++  u_int32_t	tcpi_last_data_sent;
++  u_int32_t	tcpi_last_ack_sent;	 Not remembered, sorry.
++  u_int32_t	tcpi_last_data_recv;
++  u_int32_t	tcpi_last_ack_recv;
++
++  Metrics
++  u_int32_t	tcpi_pmtu;
++  u_int32_t	tcpi_rcv_ssthresh;
++  u_int32_t	tcpi_rtt;
++  u_int32_t	tcpi_rttvar;
++  u_int32_t	tcpi_snd_ssthresh;
++  u_int32_t	tcpi_snd_cwnd;
++  u_int32_t	tcpi_advmss;
++  u_int32_t	tcpi_reordering;
++
++  u_int32_t	tcpi_rcv_rtt;
++  u_int32_t	tcpi_rcv_space;
++
++  u_int32_t	tcpi_total_retrans;
++
++ */
